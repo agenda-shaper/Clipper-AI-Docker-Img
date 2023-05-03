@@ -1,0 +1,8 @@
+sanic==22.6.2
+transformers
+accelerate
+faster-whisper
+websockets==10.0
+psycopg2-binary
+yt-dlp
+git+https://github.com/m-bain/whisperx.git
