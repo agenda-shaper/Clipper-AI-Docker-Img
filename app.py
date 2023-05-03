@@ -1,22 +1,11 @@
 import os
 import subprocess
 import base64
-from io import BytesIO
 import datetime
 import random
 import json
 import whisperx
 from faster_whisper import WhisperModel
-
-
-# Init is ran on server startup
-# Load your model to GPU as a global variable here using the variable name "model"
-def init():
-    global model
-    model_name = os.getenv("MODEL_NAME")
-
-    # Run on GPU with FP16
-    model = WhisperModel(model_name, device="cuda", compute_type="float32")
 
 
 def downloadYTaudio(url, start_time, end_time, audio_file):
@@ -49,8 +38,7 @@ def encodeFFMPEG(
     return (video_output.returncode, video_output.stderr)
 
 
-def transcribe_whisper(url, start_time, end_time):
-    global model
+def transcribe_whisper(model, model_a, metadata, url, start_time, end_time):
     audio_file = "audio-youtube.m4a"
 
     audio_returncode, audio_stderr = downloadYTaudio(
@@ -79,11 +67,6 @@ def transcribe_whisper(url, start_time, end_time):
             }
         )
 
-    # load alignment model and metadata
-    model_a, metadata = whisperx.load_align_model(
-        language_code=info.language, device="cuda"
-    )
-
     # align whisper output
     result_aligned = whisperx.align(segmentsArr, model_a, metadata, audio_file, "cuda")
 
@@ -107,12 +90,14 @@ def transcribe_whisper(url, start_time, end_time):
 
     with open("subtitles.ass", "rb") as file:
         contents = file.read()
-        encoded = base64.b64encode(contents).decode("utf-8")
+        encoded_subtitles = base64.b64encode(contents).decode("utf-8")
 
-    return encoded
+    os.remove("subtitles.ass")
+
+    return encoded_subtitles
 
 
-def exportVid(url, start_time, end_time, subtitles):
+def exportVid(url, start_time, end_time, subtitles_base64):
     file_name = "input.mp4"
 
     returncode, stderr = downloadYTClip(url, start_time, end_time, file_name)
@@ -145,9 +130,6 @@ def exportVid(url, start_time, end_time, subtitles):
 
     sub_filename = "subtitles.ass"
 
-    with open(sub_filename, "r") as sub_file:
-        sub_file.writelines(subtitles)
-
     output_name = "encodedVideoFFMPEG.mp4"
 
     video_returncode, video_stderr, output_file = encodeFFMPEG(
@@ -169,25 +151,33 @@ def exportVid(url, start_time, end_time, subtitles):
 
 # Inference is ran for every server call
 # Reference your preloaded global model variable here.
-def inference(model_inputs: dict) -> dict:
-    # Access URL from model_inputs dictionary
-    url = model_inputs["url"]
+def generate(whisper_model, model_a, metadata, model_inputs: dict) -> dict:
+    try:
+        # Access URL from model_inputs dictionary
+        url = model_inputs["url"]
 
-    # Access start time from model_inputs dictionary
-    start_time = model_inputs["start_time"]
+        # Access start time from model_inputs dictionary
+        start_time = model_inputs["start_time"]
 
-    # Access end time from model_inputs dictionary
-    end_time = model_inputs["end_time"]
+        # Access end time from model_inputs dictionary
+        end_time = model_inputs["end_time"]
 
-    type = model_inputs["type"]
+        type = model_inputs["type"]
 
-    if type == "export_video":
-        subtitles = model_inputs["subtitles_raw"]
-        output = exportVid(url, start_time, end_time, subtitles)
-        return output
-    elif type == "transcribe_audio":
-        output = transcribe_whisper(url, start_time, end_time)
-
-        return output
-    else:
-        return "invalid type"
+        if type == "export_video":
+            subtitles_base64 = model_inputs["subtitles_base64"]
+            output = exportVid(url, start_time, end_time, subtitles_base64)
+            return output
+        elif type == "transcribe_audio":
+            output = transcribe_whisper(
+                whisper_model, model_a, metadata, url, start_time, end_time
+            )
+            return output
+        elif type == "generate_single":
+            output = transcribe_whisper(
+                whisper_model, model_a, metadata, url, start_time, end_time
+            )
+        else:
+            return "invalid type in dict"
+    except Exception as e:
+        return f"error: {e}"
