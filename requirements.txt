@@ -3,5 +3,5 @@ transformers
 accelerate
 faster-whisper
 psycopg2-binary
+ffmpeg-binary
 yt-dlp
-git+https://github.com/m-bain/whisperx.git

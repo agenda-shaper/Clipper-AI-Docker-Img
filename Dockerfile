@@ -8,7 +8,7 @@ ADD bottom_clips /bottom_clips
 ADD audio /audio
 
 # install ffmepg
-RUN apt-get update && apt-get install -y ffmpeg
+RUN apt-get update && apt-get install -y git ffmpeg
 
 RUN pip3 install --upgrade pip
 ADD requirements.txt requirements.txt
